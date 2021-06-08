@@ -1,28 +1,33 @@
 package main
 
 import (
-	"database/sql"
-	
+	"log"
+	"net/http"
+
+	"github.com/aman7625/iitk-coin/middleware"
 	"github.com/aman7625/iitk-coin/userInfo"
+	"github.com/gorilla/mux"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
+	
+	r := mux.NewRouter();
+
+	r.HandleFunc("/login",userInfo.Login).Methods("POST")
+	r.HandleFunc("/signup",userInfo.Singup).Methods("POST")
+	r.HandleFunc("/secretpage",middleware.UserAuthentication).Methods("GET")
+
+	log.Println("Server Starting...!")
+	log.Fatal(http.ListenAndServe(":8000",r))
+	
+}
+
+/*
+	//To check users in database
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	userInfo.CheckError(err)
 	user := userInfo.FromSQLite(db)
-
-	user.Add(userInfo.User{
-		Rollno: 191000,
-		Name:   "Frodo Baggins",
-	})
-	user.Add(userInfo.User{
-		Rollno: 191001,
-		Name:   "Bilbo Baggins",
-	})
-	user.Add(userInfo.User{
-		Rollno: 191002,
-		Name:   "Samwise Gamgee",
-	})
-
-}
+	users := user.Get();
+	fmt.Println(users)
+	*/

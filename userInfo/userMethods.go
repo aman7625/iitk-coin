@@ -2,6 +2,7 @@ package userInfo
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 )
 
@@ -23,9 +24,10 @@ func (s *SQLite) Get() []User {
 	defer rows.Close()
 	var id int
 	var rollno int
+	var password string
 	var name string
 	for rows.Next() {
-		rows.Scan(&id, &rollno, &name)
+		rows.Scan(&id, &rollno, &password, &name)
 		users = append(users, User{
 			ID:     id,
 			Rollno: rollno,
@@ -35,32 +37,39 @@ func (s *SQLite) Get() []User {
 	return users
 }
 
-//To check if the user already exists
-func (s *SQLite) UserExists(user User) bool {
+//To check if the user already exists in the database
+func (s *SQLite) UserExists(user RegisterRequest) bool {
 	rollno := user.Rollno
-    sqlStmt := `SELECT Rollno FROM user_info WHERE rollno = ?`
-    err := s.DB.QueryRow(sqlStmt, rollno).Scan(&rollno)
-    if err != nil {
-        if err != sql.ErrNoRows {
-            log.Print(err)
-        }
+	sqlStmt := `SELECT Rollno FROM user_info WHERE rollno = ?`
+	err := s.DB.QueryRow(sqlStmt, rollno).Scan(&rollno)
 
-        return false
-    }
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Print(err)
+		}
 
-    return true
+		return false
+	}
+
+	return true
 }
+
 
 //Add adds users into user_info
-func (s *SQLite) Add(user User) {
+func (s *SQLite) Add(user RegisterRequest) error{
 	stmt, err := s.DB.Prepare(
-		"INSERT INTO user_info(Rollno, Name) VALUES (?, ?)")
+		"INSERT INTO user_info(Rollno, Name, Password) VALUES (?, ?, ?)")
 	CheckError(err)
-	if !(s.UserExists(user)) {
-		stmt.Exec(user.Rollno, user.Name)
-	}
-}
 
+	hashedPassword := HashAndSalt(user.Password)
+	
+	if !(s.UserExists(user)) {
+		stmt.Exec(user.Rollno, user.Name, hashedPassword)
+		return nil
+	}
+
+	return errors.New("User Already exists")
+}
 
 //Creates a table user_info using sqlite
 func FromSQLite(db *sql.DB) *SQLite {
@@ -68,7 +77,8 @@ func FromSQLite(db *sql.DB) *SQLite {
 	CREATE TABLE IF NOT EXISTS "user_info" (
 		"ID"	  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"Rollno"  INT,
-		"Name"    TEXT
+		"Name"    TEXT,
+		"Password"  TEXT
 	  );
 	`)
 
