@@ -18,6 +18,10 @@ func main() {
 	r.HandleFunc("/signup",userInfo.Singup).Methods("POST")
 	r.HandleFunc("/secretpage",middleware.UserAuthentication).Methods("GET")
 
+	r.HandleFunc("/reward",userInfo.AwardCoins).Methods("POST")
+	r.HandleFunc("/transfer",userInfo.TransferCoins).Methods("POST")
+	r.HandleFunc("/view",userInfo.CoinBalance).Methods(("GET"))
+
 	log.Println("Server Starting...!")
 	log.Fatal(http.ListenAndServe(":8000",r))
 	

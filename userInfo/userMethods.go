@@ -38,8 +38,8 @@ func (s *SQLite) Get() []User {
 }
 
 //To check if the user already exists in the database
-func (s *SQLite) UserExists(user RegisterRequest) bool {
-	rollno := user.Rollno
+func (s *SQLite) UserExists(id int) bool {
+	rollno := id
 	sqlStmt := `SELECT Rollno FROM user_info WHERE rollno = ?`
 	err := s.DB.QueryRow(sqlStmt, rollno).Scan(&rollno)
 
@@ -63,7 +63,7 @@ func (s *SQLite) Add(user RegisterRequest) error{
 
 	hashedPassword := HashAndSalt(user.Password)
 	
-	if !(s.UserExists(user)) {
+	if !(s.UserExists(user.Rollno)) {
 		stmt.Exec(user.Rollno, user.Name, hashedPassword)
 		return nil
 	}
@@ -78,7 +78,8 @@ func FromSQLite(db *sql.DB) *SQLite {
 		"ID"	  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"Rollno"  INT,
 		"Name"    TEXT,
-		"Password"  TEXT
+		"Password"  TEXT,
+		"Coins"  INT DEFAULT 0
 	  );
 	`)
 
@@ -88,4 +89,14 @@ func FromSQLite(db *sql.DB) *SQLite {
 	return &SQLite{
 		DB: db,
 	}
+}
+
+//GetBalance gets the current Balance of the user
+func(s *SQLite) GetBalance(id int) int{
+	rollno := id
+	var coins int
+	err := s.DB.QueryRow("SELECT Coins FROM user_info WHERE rollno=?", rollno).Scan(&coins)
+	CheckError(err)
+
+	return coins
 }
