@@ -9,19 +9,19 @@ import (
 
 // JwtWrapper wraps the signing key and the issuer
 type JwtWrapper struct {
-	SecretKey       string
-	Issuer          string
+	SecretKey      string
+	Issuer         string
 	ExpirationMins int64
 }
 
-// JwtClaim adds email as a claim to the token
+// JwtClaim adds rollno as a claim to the token
 type JwtClaim struct {
-	Rollno int
+	Rollno int64
 	jwt.StandardClaims
 }
 
 // GenerateToken generates a jwt token
-func (j *JwtWrapper) GenerateToken(rollno int) (signedToken string, err error) {
+func (j *JwtWrapper) GenerateToken(rollno int64) (signedToken string, err error) {
 	claims := &JwtClaim{
 		Rollno: rollno,
 		StandardClaims: jwt.StandardClaims{
@@ -56,7 +56,7 @@ func (j *JwtWrapper) ValidateToken(signedToken string) (claims *JwtClaim, err er
 
 	claims, ok := token.Claims.(*JwtClaim)
 	if !ok {
-		err = errors.New("Couldn't parse claims")
+		err = errors.New("couldn't parse claims")
 		return
 	}
 

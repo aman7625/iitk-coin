@@ -1,34 +1,56 @@
 package userInfo
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
-	"sync"
+
+	"github.com/aman7625/iitk-coin/middleware"
 )
 
 type AwardAmount struct {
-	Rollno       int `json:"rollno"`
-	AmountToSend int `json:"amount_to_send"`
+	Rollno            int64   `json:"rollno"`
+	AmountToSend      float64 `json:"amountToSend"`
+	FromCouncilMember string  `json:"fromCouncilMember"`
+	FromAdmin         string  `json:"fromAdmin,omitempty"`
 }
 
 type TransferAmount struct {
-	SenderRollno   int `json:"sender_rollno"`
-	RecieverRollno int `json:"reciever_rollno"`
-	AmountToSend   int `json:"amount_to_send"`
+	SenderRollno   int64   `json:"sender_rollno"`
+	RecieverRollno int64   `json:"reciever_rollno"`
+	AmountToSend   float64 `json:"amount_to_send"`
+}
+
+type RedeemAmount struct {
+	Rollno         int64   `json:"rollno"`
+	AmountToRedeem float64 `json:"amountToRedeem"`
+}
+
+type DestroyUser struct {
+	Prefix               string `json:"prefix"`
+	IsActionTakenByAdmin string `json:"isActionTakenByAdmin"`
 }
 
 type CurrentBalance struct {
-	Rollno int `json:"rollno"`
+	Rollno int64 `json:"rollno"`
 }
 
 type Response struct {
 	Message string `json:"message"`
 }
 
+type TransactionDetail struct {
+	transactionType string
+	sender          int64
+	reciever        int64
+	amountSent      float64
+	amountRecieved  float64
+	tax             string
+	dateTime        string
+}
+
+//Called when "/award" endpoint is hit
 func AwardCoins(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var awardAmount AwardAmount
@@ -56,11 +78,22 @@ func AwardCoins(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
+//Called when "/transfer" endpoint is hit
 func TransferCoins(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var transferAmount TransferAmount
 
-	err := json.NewDecoder(r.Body).Decode(&transferAmount)
+	//Aunthenticate the user sending coins
+	_, err := middleware.UserAuthentication(w, r)
+	if err != nil {
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&transferAmount)
 	if err != nil {
 		// If there is something wrong with the request body, return a 400 status
 		w.WriteHeader(http.StatusBadRequest)
@@ -84,6 +117,7 @@ func TransferCoins(w http.ResponseWriter, r *http.Request) {
 
 }
 
+//Called when "/view" endpoint is hit
 func CoinBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var currentBalance CurrentBalance
@@ -109,85 +143,109 @@ func CoinBalance(w http.ResponseWriter, r *http.Request) {
 	coins := sqldb.GetBalance(currentBalance.Rollno)
 
 	res := Response{
-		Message: "Current Balance: " + strconv.Itoa(coins),
+		Message: "Current Balance: " + strconv.FormatFloat(coins, 'f', 2, 64),
 	}
 	json.NewEncoder(w).Encode(res)
 
 }
 
-//Called when user recieves certain amount of Coins through admin
-func UpdateAwardCoins(awardAmount AwardAmount) error {
+//Called when "/redeem" endpoint is hit
+func RedeemCoins(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var redeemAmount RedeemAmount
+	var userBalance float64
+	areGiftsAvailable := true //to be set by council members
+
+	//Authenticate the user redeeming coins
+	_, err := middleware.UserAuthentication(w, r)
+	if err != nil {
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&redeemAmount)
+	if err != nil {
+		// If there is something wrong with the request body, return a 400 status
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	sqldb := FromSQLite(db)
 
-	if !(sqldb.UserExists(awardAmount.Rollno)) {
-		return errors.New("User with this Rollno does not exists")
+	userBalance = sqldb.GetBalance(redeemAmount.Rollno)
+	if userBalance < redeemAmount.AmountToRedeem {
+		res := Response{
+			Message: "Insufficient Balance",
+		}
+		json.NewEncoder(w).Encode(res)
+		return
 	}
 
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
-	CheckError(err)
+	if !(areGiftsAvailable) {
+		res := Response{
+			Message: "No Gifts available in store",
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
 
-	_, err = tx.ExecContext(ctx, "UPDATE user_info SET Coins = Coins + ? WHERE Rollno =?", awardAmount.AmountToSend, awardAmount.Rollno)
+	err = UpdateRedeemCoins(redeemAmount)
+
 	if err != nil {
-		// Incase we find any error in the query execution, rollback the transaction
-		tx.Rollback()
-		return err
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
 	}
 
-	err = tx.Commit()
-	CheckError(err)
+	res := Response{
+		Message: "Amount Redeemed Successfully",
+	}
+	json.NewEncoder(w).Encode(res)
 
-	return nil
 }
 
-//Called when coins are transfered between users
-func UpdateTransferCoins(transferAmount TransferAmount) error {
+//Called when /destroy endpoint is hit
+func DestroyGraduatingBatchAccounts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var destroyUser DestroyUser
+
+	err := json.NewDecoder(r.Body).Decode(&destroyUser)
+	if err != nil {
+		// If there is something wrong with the request body, return a 400 status
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if destroyUser.IsActionTakenByAdmin == "false" {
+		res := Response{
+			Message: "You don't have authorization to use this method",
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	lowerbound, err := strconv.Atoi(destroyUser.Prefix + "0000")
+	CheckError(err)
+	upperbound, _ := strconv.Atoi(destroyUser.Prefix + "9999")
+	CheckError(err)
+
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	sqldb := FromSQLite(db)
 
-	if !(sqldb.UserExists(transferAmount.SenderRollno)) {
-		return errors.New("sender's rollno does not exists")
-	}
-
-	if !(sqldb.UserExists(transferAmount.RecieverRollno)) {
-		return errors.New("reciever's rollno does not exists")
-	}
-
-	sendersBalance := sqldb.GetBalance(transferAmount.SenderRollno)
-	if sendersBalance < transferAmount.AmountToSend {
-		return errors.New("insufficient balance")
-	}
-
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
+	stmt, err := sqldb.DB.Prepare("DELETE FROM user_info WHERE Rollno > ? AND Rollno < ?")
 	CheckError(err)
+	stmt.Exec(lowerbound, upperbound)
 
-	lock := sync.RWMutex{}
-	lock.RLock()
-
-	_, err = tx.ExecContext(ctx,
-		"UPDATE user_info SET Coins = Coins - ? WHERE Rollno = ? AND Coins - ?>=0", transferAmount.AmountToSend, transferAmount.SenderRollno, transferAmount.AmountToSend)
-	if err != nil {
-		// Incase we find any error in the query execution, rollback the transaction
-		tx.Rollback()
-		return err
+	res := Response{
+		Message: "Accounts Destroyed Successfully",
 	}
-
-	_, err = tx.ExecContext(ctx,
-		"UPDATE user_info SET Coins = Coins + ? WHERE Rollno = ?", transferAmount.AmountToSend, transferAmount.RecieverRollno)
-	if err != nil {
-		// Incase we find any error in the query execution, rollback the transaction
-		tx.Rollback()
-		return err
-	}
-
-	lock.RUnlock()
-
-	err = tx.Commit()
-	CheckError(err)
-
-	return nil
+	json.NewEncoder(w).Encode(res)
 }

@@ -11,20 +11,22 @@ import (
 )
 
 func main() {
-	
-	r := mux.NewRouter();
 
-	r.HandleFunc("/login",userInfo.Login).Methods("POST")
-	r.HandleFunc("/signup",userInfo.Singup).Methods("POST")
-	r.HandleFunc("/secretpage",middleware.UserAuthentication).Methods("GET")
+	r := mux.NewRouter()
 
-	r.HandleFunc("/reward",userInfo.AwardCoins).Methods("POST")
-	r.HandleFunc("/transfer",userInfo.TransferCoins).Methods("POST")
-	r.HandleFunc("/view",userInfo.CoinBalance).Methods(("GET"))
+	r.HandleFunc("/login", userInfo.Login).Methods("POST")
+	r.HandleFunc("/signup", userInfo.Singup).Methods("POST")
+	r.HandleFunc("/secretpage", middleware.Welcome).Methods("GET")
 
-	log.Println("Server Starting...!")
-	log.Fatal(http.ListenAndServe(":8000",r))
-	
+	r.HandleFunc("/reward", userInfo.AwardCoins).Methods("POST")
+	r.HandleFunc("/transfer", userInfo.TransferCoins).Methods("POST")
+	r.HandleFunc("/view", userInfo.CoinBalance).Methods("GET")
+	r.HandleFunc("/redeem", userInfo.RedeemCoins).Methods("POST")
+	r.HandleFunc("/destroy", userInfo.DestroyGraduatingBatchAccounts).Methods("POST")
+
+	log.Println("Starting Server...!")
+	log.Fatal(http.ListenAndServe(":8000", r))
+
 }
 
 /*
@@ -34,4 +36,4 @@ func main() {
 	user := userInfo.FromSQLite(db)
 	users := user.Get();
 	fmt.Println(users)
-	*/
+*/

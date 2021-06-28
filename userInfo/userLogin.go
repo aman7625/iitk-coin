@@ -11,7 +11,7 @@ import (
 )
 
 type LoginRequest struct {
-	Rollno   int    `json:"rollno"`
+	Rollno   int64  `json:"rollno"`
 	Password string `json:"password"`
 }
 
@@ -25,17 +25,16 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
-		// If there is something wrong with the request body, return a 400 status	
+		// If there is something wrong with the request body, return a 400 status
 		w.WriteHeader(http.StatusBadRequest)
-		return 
+		return
 	}
 
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	s := FromSQLite(db)
 
-
-	rollno:= user.Rollno
+	rollno := user.Rollno
 	password := user.Password
 
 	var dbpass string
@@ -51,17 +50,16 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	err = bcrypt.CompareHashAndPassword([]byte(dbpass), []byte(password))
 	if err != nil {
 		// If the two passwords don't match, return a 401 status
 		w.WriteHeader(http.StatusUnauthorized)
-		return 
+		return
 	}
 
 	jwtWrapper := middleware.JwtWrapper{
-		SecretKey:       "my_secret_key",
-		Issuer:          "AuthService",
+		SecretKey:      "my_secret_key",
+		Issuer:         "AuthService",
 		ExpirationMins: 10,
 	}
 
@@ -79,9 +77,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Name:    "token",
 		Value:   signedToken,
 		Expires: time.Now().Local().Add(time.Minute * time.Duration(jwtWrapper.ExpirationMins)),
-		Path: "/",
+		Path:    "/",
 	})
-	json.NewEncoder(w).Encode(tokenResponse)	
+	json.NewEncoder(w).Encode(tokenResponse)
 }
-
-  

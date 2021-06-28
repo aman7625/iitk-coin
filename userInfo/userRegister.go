@@ -9,9 +9,11 @@ import (
 )
 
 type RegisterRequest struct {
-	Rollno   int    `json:"rollno"`
+	Rollno   int64   `json:"rollno"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	IsCouncilMember string `json:"isCouncilMember"`  //for Council Members
+	IsAdmin string `json:"isAdmin"`  //for Gensec and AH
 }
 
 type RegisterResponse struct {
