@@ -93,6 +93,7 @@ func FromSQLite(db *sql.DB) *SQLite {
 	}
 }
 
+//Creating the Transaction History Table
 func TransactionHistory(db *sql.DB) *SQLite {
 	stmt, err := db.Prepare(`
 	CREATE TABLE IF NOT EXISTS "transaction_history" (
@@ -104,6 +105,26 @@ func TransactionHistory(db *sql.DB) *SQLite {
 		"AmountRecieved" REAL,
 		"Tax" REAL,
 		"TransactionDate" TEXT
+	  );
+	`)
+
+	CheckError(err)
+	stmt.Exec()
+
+	return &SQLite{
+		DB: db,
+	}
+}
+
+//Create a table for redeem request
+func RedeemRequestTable(db *sql.DB) *SQLite {
+	stmt, err := db.Prepare(`
+	CREATE TABLE IF NOT EXISTS "redeem_requests" (
+		"ID"	  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		"NumberOfCoins" REAL,
+		"ItemName" TEXT,
+		"Sender" INT,
+		"Status" TEXT
 	  );
 	`)
 
@@ -171,4 +192,37 @@ func (s *SQLite) isRewardValid(awardAmount AwardAmount) bool {
 	}
 
 	return false
+}
+
+//Adding Redeem Request in the Table
+func (s *SQLite) AddRequest(redeem RedeemRequestDTO) {
+	stmt, err := s.DB.Prepare(
+		"INSERT INTO redeem_requests(NumberOfCoins,ItemName,Sender, Status) VALUES (?,?,?,?)")
+	CheckError(err)
+	stmt.Exec(redeem.NumberOfCoins, redeem.ItemName, redeem.Sender, redeem.Status)
+}
+
+//Updating Status of Redeem Request
+func (s *SQLite) ModifyStatus(action Action) {
+	stmt, err := s.DB.Prepare("UPDATE redeem_requests SET Status = ? WHERE ID = ?")
+	CheckError(err)
+	stmt.Exec(action.Status, action.Id)
+}
+
+//Get Sender's rollno using Id of redeem_requests table
+func (s *SQLite) GetSender(action Action) (int64, float64) {
+	var rollno int64
+	var numberOfCoins float64
+	err := s.DB.QueryRow("SELECT Sender, NumberOfCoins FROM redeem_requests WHERE ID = ?", action.Id).Scan(&rollno, &numberOfCoins)
+	CheckError(err)
+
+	return rollno, numberOfCoins
+}
+
+func (s *SQLite) isUserAdmin(rollno int64) bool {
+	var isAdmin string
+	err := s.DB.QueryRow("SELECT isAdmin FROM user_info WHERE Rollno = ?", rollno).Scan(&isAdmin)
+	CheckError(err)
+
+	return isAdmin == "Yes"
 }

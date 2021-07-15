@@ -22,6 +22,7 @@ func main() {
 	r.HandleFunc("/transfer", userInfo.TransferCoins).Methods("POST")
 	r.HandleFunc("/view", userInfo.CoinBalance).Methods("GET")
 	r.HandleFunc("/redeem", userInfo.RedeemCoins).Methods("POST")
+	r.HandleFunc("/takeAction", userInfo.TakeAction).Methods("POST")
 	r.HandleFunc("/destroy", userInfo.DestroyGraduatingBatchAccounts).Methods("POST")
 
 	log.Println("Starting Server...!")

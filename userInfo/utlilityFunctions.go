@@ -3,11 +3,20 @@ package userInfo
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/aman7625/iitk-coin/middleware"
 )
+
+type Action struct {
+	Id     int    `json:"id"`
+	Status string `json:"status"`
+}
 
 //Called when user recieves certain amount of Coins through admin
 func UpdateAwardCoins(awardAmount AwardAmount) error {
@@ -40,7 +49,7 @@ func UpdateAwardCoins(awardAmount AwardAmount) error {
 	dt := time.Now()
 	detail := TransactionDetail{transactionType: "reward", sender: 0, reciever: awardAmount.Rollno, amountSent: 0, amountRecieved: awardAmount.AmountToSend, tax: "nil", dateTime: dt.String()}
 
-	db, err = sql.Open("sqlite3", "./transaction_history.db")
+	db, err = sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	sqldb = TransactionHistory(db)
 	sqldb.AddTransaction(detail)
@@ -49,7 +58,7 @@ func UpdateAwardCoins(awardAmount AwardAmount) error {
 }
 
 //Called when coins are transfered between users
-func UpdateTransferCoins(transferAmount TransferAmount) error {
+func UpdateTransferCoins(transferAmount TransferAmountDTO) error {
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	sqldb := FromSQLite(db)
@@ -71,9 +80,7 @@ func UpdateTransferCoins(transferAmount TransferAmount) error {
 		return errors.New("insufficient balance")
 	}
 
-	tdb, err := sql.Open("sqlite3", "./transaction_history.db")
-	CheckError(err)
-	tsqldb := TransactionHistory(tdb)
+	tsqldb := TransactionHistory(db)
 
 	//find the number of events sender has participated
 	numberOfEventsParticipated := tsqldb.eventsParticipated(transferAmount.SenderRollno)
@@ -126,32 +133,98 @@ func UpdateTransferCoins(transferAmount TransferAmount) error {
 	return nil
 }
 
-//Called when User Redeems Coin
-func UpdateRedeemCoins(redeemAmount RedeemAmount) error {
+//Function called when Admin takes action on pending Redeem Requests
+func TakeAction(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var action Action
+
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 
+	//Authenticating whether user is Admin
+	AdminRollno, err := middleware.UserAuthentication(w, r)
+	if err != nil {
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+	userdb := FromSQLite(db)
+	isAdmin := userdb.isUserAdmin(AdminRollno)
+	if !isAdmin {
+		res := Response{
+			Message: "Only Admins can perform this action",
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&action)
+	if err != nil {
+		// If there is something wrong with the request body, return a 400 status
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	sqldb := RedeemRequestTable(db)
+
+	if action.Status == "rejected" {
+		sqldb.ModifyStatus(action)
+		res := Response{
+			Message: "Successfully rejected redeem request",
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
+
+	//If action is approved need to check redeemer's balance and update it
+	//If insufficient balance status would be rejected
+
+	//Get Sender's rollno and Amount to Redeem using Id from action object
+	rollno, amountToRedeem := sqldb.GetSender(action)
+
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
-	CheckError(err)
+	if err != nil {
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
 
-	_, err = tx.ExecContext(ctx, "UPDATE user_info SET Coins = Coins - ? WHERE Rollno =?", redeemAmount.AmountToRedeem, redeemAmount.Rollno)
+	_, err = tx.ExecContext(ctx,
+		"UPDATE user_info SET Coins = Coins - ? WHERE Rollno = ? AND Coins - ?>=0", amountToRedeem, rollno, amountToRedeem)
 	if err != nil {
 		// Incase we find any error in the query execution, rollback the transaction
 		tx.Rollback()
-		return err
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
 	}
 
 	err = tx.Commit()
-	CheckError(err)
+	if err != nil {
+		res := Response{
+			Message: err.Error(),
+		}
+		json.NewEncoder(w).Encode(res)
+		return
+	}
 
 	dt := time.Now()
-	detail := TransactionDetail{transactionType: "redeem", sender: redeemAmount.Rollno, reciever: 0, amountSent: redeemAmount.AmountToRedeem, amountRecieved: 0, tax: "nil", dateTime: dt.String()}
+	detail := TransactionDetail{transactionType: "redeem", sender: rollno, reciever: 0, amountSent: amountToRedeem, amountRecieved: 0, tax: "nil", dateTime: dt.String()}
 
-	db, err = sql.Open("sqlite3", "./transaction_history.db")
-	CheckError(err)
-	sqldb := TransactionHistory(db)
-	sqldb.AddTransaction(detail)
+	tsqldb := TransactionHistory(db)
+	tsqldb.AddTransaction(detail)
 
-	return nil
+	//If everything goes fine, modify the status to approved
+	sqldb.ModifyStatus(action)
+	res := Response{
+		Message: "Appropriate Action Taken Successfully",
+	}
+	json.NewEncoder(w).Encode(res)
 }

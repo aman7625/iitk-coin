@@ -17,14 +17,26 @@ type AwardAmount struct {
 }
 
 type TransferAmount struct {
-	SenderRollno   int64   `json:"sender_rollno"`
 	RecieverRollno int64   `json:"reciever_rollno"`
 	AmountToSend   float64 `json:"amount_to_send"`
 }
 
-type RedeemAmount struct {
-	Rollno         int64   `json:"rollno"`
-	AmountToRedeem float64 `json:"amountToRedeem"`
+type TransferAmountDTO struct {
+	SenderRollno   int64
+	RecieverRollno int64
+	AmountToSend   float64
+}
+
+type RedeemRequest struct {
+	NumberOfCoins float64 `json:"numberOfCoins"`
+	ItemName      string  `json:"itemName"`
+}
+
+type RedeemRequestDTO struct {
+	NumberOfCoins float64
+	ItemName      string
+	Sender        int64
+	Status        string
 }
 
 type DestroyUser struct {
@@ -84,7 +96,7 @@ func TransferCoins(w http.ResponseWriter, r *http.Request) {
 	var transferAmount TransferAmount
 
 	//Aunthenticate the user sending coins
-	_, err := middleware.UserAuthentication(w, r)
+	rollno, err := middleware.UserAuthentication(w, r)
 	if err != nil {
 		res := Response{
 			Message: err.Error(),
@@ -100,7 +112,9 @@ func TransferCoins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = UpdateTransferCoins(transferAmount)
+	transferdto := TransferAmountDTO{SenderRollno: rollno, RecieverRollno: transferAmount.RecieverRollno, AmountToSend: transferAmount.AmountToSend}
+
+	err = UpdateTransferCoins(transferdto)
 
 	if err != nil {
 		res := Response{
@@ -149,15 +163,11 @@ func CoinBalance(w http.ResponseWriter, r *http.Request) {
 
 }
 
-//Called when "/redeem" endpoint is hit
 func RedeemCoins(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var redeemAmount RedeemAmount
-	var userBalance float64
-	areGiftsAvailable := true //to be set by council members
+	var redeemRequest RedeemRequest
 
-	//Authenticate the user redeeming coins
-	_, err := middleware.UserAuthentication(w, r)
+	rollno, err := middleware.UserAuthentication(w, r)
 	if err != nil {
 		res := Response{
 			Message: err.Error(),
@@ -166,19 +176,22 @@ func RedeemCoins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewDecoder(r.Body).Decode(&redeemAmount)
+	//fmt.Println(rollno)
+
+	err = json.NewDecoder(r.Body).Decode(&redeemRequest)
 	if err != nil {
 		// If there is something wrong with the request body, return a 400 status
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
+	//Initial Check to see if user has sufficient balance
 	db, err := sql.Open("sqlite3", "./user_info.db")
 	CheckError(err)
 	sqldb := FromSQLite(db)
+	coins := sqldb.GetBalance(rollno)
 
-	userBalance = sqldb.GetBalance(redeemAmount.Rollno)
-	if userBalance < redeemAmount.AmountToRedeem {
+	if coins < redeemRequest.NumberOfCoins {
 		res := Response{
 			Message: "Insufficient Balance",
 		}
@@ -186,29 +199,19 @@ func RedeemCoins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !(areGiftsAvailable) {
-		res := Response{
-			Message: "No Gifts available in store",
-		}
-		json.NewEncoder(w).Encode(res)
-		return
-	}
+	redeem := RedeemRequestDTO{NumberOfCoins: redeemRequest.NumberOfCoins, ItemName: redeemRequest.ItemName, Sender: rollno, Status: "pending"}
 
-	err = UpdateRedeemCoins(redeemAmount)
+	//Adding redeem request in table
+	db, err = sql.Open("sqlite3", "./user_info.db")
+	CheckError(err)
+	sqldb = RedeemRequestTable(db)
+	sqldb.AddRequest(redeem)
 
-	if err != nil {
-		res := Response{
-			Message: err.Error(),
-		}
-		json.NewEncoder(w).Encode(res)
-		return
-	}
-
+	//Else redeem request is sent
 	res := Response{
-		Message: "Amount Redeemed Successfully",
+		Message: "Redeem Request has been sent",
 	}
 	json.NewEncoder(w).Encode(res)
-
 }
 
 //Called when /destroy endpoint is hit
