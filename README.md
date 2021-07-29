@@ -15,6 +15,9 @@ To run the project locally, open the folder inside a terminal and use the follow
 | `/view`         | `GET`                 |`Find Current Balance`|
 | `/reward`       | `POST`                |`Reward certain amount to a user` |
 | `/transfer`     | `POST`                |`Transfer certain amount between users` |
+| `/redeem`     | `POST`                |`Users can perform redeem action` |
+| `/takeAction`     | `POST`                |`Admins can take action on pending redeem request` |
+| `/destroy`     | `POST`                |`Destroys Graduating Batch Accounts`|
 
 ## Testing Endpoints
 * ### Creating new account
@@ -26,20 +29,14 @@ curl -i --request POST 'http://localhost:8000/signup' \
 --data-raw '{
     "rollno":1000,
     "password":"dummy",
-    "name":"John Doe"
+    "name":"John Doe",
+    "isCouncilMember": "No",
+    "isAdmin":"No"
 }'
 ```
 
-`Response`
-```
-{
-  "rollno":1000,
-  "password":"dummy",
-  "name":"John Doe"
-  }
-``` 
-
 * ### Logging into account
+Returns a token on successful login
 
 `Request`
 ```
@@ -49,13 +46,6 @@ curl -i --request POST 'http://localhost:8000/login' \
     "rollno":1000,
     "password":"dummy"
 }'
-```
-
-`Response`
-
-A token is returned which can be used to access the secret page
-```
-{"token":"${Token}"}
 ```
 
 * ### Find Current Balance
@@ -98,7 +88,6 @@ curl -i --request POST 'http://localhost:8000/reward' \
 curl -i --request POST 'http://localhost:8000/transfer' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "sender_rollno": 1000,
     "reciever_rollno":1001,
     "amount_to_send": 40
 }'
