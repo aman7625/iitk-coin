@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	jwt "github.com/golang-jwt/jwt"
 )
 
 // JwtWrapper wraps the signing key and the issuer

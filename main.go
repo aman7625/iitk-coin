@@ -26,7 +26,7 @@ func main() {
 	r.HandleFunc("/destroy", userInfo.DestroyGraduatingBatchAccounts).Methods("POST")
 
 	log.Println("Starting Server...!")
-	log.Fatal(http.ListenAndServe(":8000", r))
+	log.Fatal(http.ListenAndServe(":8080", r))
 
 }
 
